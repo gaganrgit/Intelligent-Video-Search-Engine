@@ -1,5 +1,7 @@
 # Intelligent Video Search Engine
 
+**Demonstration Video Link** : https://drive.google.com/file/d/1T8J3LFTXCLImmb5oY6du2QUOSZsK5VYN/view?usp=drivesdk
+
 Natural language querying over video archives — type a plain-English description, get back ranked timestamps and frame previews.
 
 | | |
