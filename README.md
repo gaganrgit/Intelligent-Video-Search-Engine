@@ -1,15 +1,5 @@
 # 🎬 Intelligent Video Search Engine
 
-> Natural language querying over video archives — Variphi Take-Home Project
-
----
-
-## Demo Video
-
-📹 **[YouTube / Google Drive link — add before submission]**
-
----
-
 ## Table of Contents
 
 1. [Setup & Installation](#setup--installation)
@@ -20,10 +10,8 @@
 6. [Benchmark Results](#benchmark-results)
 7. [Open-Ended Exploration](#open-ended-exploration)
 8. [Known Limitations](#known-limitations)
-9. [Scalability Notes](#scalability-notes)
 
 ---
-
 ## Setup & Installation
 
 ### Prerequisites
@@ -334,3 +322,4 @@ Full single-page UI (`static/index.html`) with:
 - Results grid with thumbnail previews and score bars
 - Frame detail modal
 - One-click HTML / JSON / CSV export
+
