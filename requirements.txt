@@ -1,0 +1,23 @@
+# ── Core ML & Embeddings ──────────────────────────────────────────────────────
+torch>=2.0.0
+transformers>=4.40.0
+Pillow>=10.0.0
+
+# ── Vector Store ──────────────────────────────────────────────────────────────
+faiss-cpu>=1.7.4          # swap for faiss-gpu if CUDA available
+
+# ── Video Processing ──────────────────────────────────────────────────────────
+opencv-python-headless>=4.8.0
+
+# ── FastAPI & Server ──────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+# ── Config & Validation ───────────────────────────────────────────────────────
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+numpy>=1.24.0
+tqdm>=4.66.0

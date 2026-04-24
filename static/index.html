@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Variphi — Intelligent Video Search</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131f;
+    --surface2: #1a1a2e;
+    --border: #252540;
+    --accent: #6c63ff;
+    --accent2: #7eb8f7;
+    --text: #e2e2f0;
+    --muted: #6b6b8a;
+    --success: #4caf50;
+    --error: #f44336;
+    --warn: #ff9800;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ───────────────────────────────────────────────────────────── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header .logo { font-size: 1.5rem; font-weight: 700; color: var(--accent2); letter-spacing: -0.5px; }
+  header .logo span { color: var(--accent); }
+  header .tagline { color: var(--muted); font-size: 0.85rem; }
+  header a.docs-link {
+    margin-left: auto;
+    color: var(--accent2);
+    text-decoration: none;
+    font-size: 0.85rem;
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+    border-radius: 6px;
+    transition: background 0.2s;
+  }
+  header a.docs-link:hover { background: var(--surface2); }
+
+  /* ── Layout ───────────────────────────────────────────────────────────── */
+  .layout { display: flex; flex: 1; }
+  .sidebar {
+    width: 320px;
+    min-width: 280px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
+  }
+  .main { flex: 1; padding: 24px 28px; overflow-y: auto; }
+
+  /* ── Section headers ──────────────────────────────────────────────────── */
+  .section-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* ── Form elements ────────────────────────────────────────────────────── */
+  label { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  input[type=text], input[type=number], textarea, select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 72px; font-family: inherit; }
+
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+
+  input[type=checkbox] { width: auto; accent-color: var(--accent); }
+  .check-row { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text); }
+
+  /* ── Buttons ──────────────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+  .btn-full { width: 100%; }
+
+  /* ── Status badge ─────────────────────────────────────────────────────── */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-running { background: #1a3a5c; color: var(--accent2); }
+  .badge-done    { background: #1a3a1a; color: var(--success); }
+  .badge-error   { background: #3a1a1a; color: var(--error); }
+  .badge-pending { background: var(--surface2); color: var(--muted); }
+
+  /* ── Progress bar ─────────────────────────────────────────────────────── */
+  .progress-wrap { background: var(--surface2); border-radius: 100px; height: 6px; margin: 8px 0; overflow: hidden; }
+  .progress-bar  { background: var(--accent); height: 100%; border-radius: 100px; transition: width 0.4s; }
+
+  /* ── Index status card ────────────────────────────────────────────────── */
+  .status-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .status-card .stat { display: flex; justify-content: space-between; margin-top: 6px; }
+  .status-card .stat-val { color: var(--text); font-weight: 600; }
+
+  /* ── Results grid ─────────────────────────────────────────────────────── */
+  .results-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .results-header h2 { font-size: 1.1rem; color: var(--accent2); }
+  .results-meta { color: var(--muted); font-size: 0.82rem; }
+  .sub-queries { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .sub-q-chip {
+    background: #1e1e3a;
+    border: 1px solid var(--accent);
+    color: var(--accent2);
+    border-radius: 100px;
+    padding: 2px 10px;
+    font-size: 0.75rem;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform 0.15s, border-color 0.2s;
+    cursor: pointer;
+  }
+  .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+
+  .card-img {
+    width: 100%; height: 150px;
+    object-fit: cover;
+    background: #0f0f1a;
+    display: block;
+  }
+  .card-body { padding: 10px 12px; }
+  .card-rank {
+    float: right;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 100px;
+  }
+  .card-ts { font-size: 1.05rem; font-weight: 700; color: var(--accent2); }
+  .card-score { font-size: 0.78rem; color: var(--muted); margin-top: 3px; }
+  .card-vid { font-size: 0.72rem; color: #555; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-sq { font-size: 0.72rem; color: #9b7; margin-top: 2px; font-style: italic; }
+
+  /* ── Score bar inside card ────────────────────────────────────────────── */
+  .score-bar-wrap { height: 3px; background: var(--border); border-radius: 100px; margin-top: 6px; }
+  .score-bar { height: 100%; border-radius: 100px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+
+  /* ── Empty / loading / error states ──────────────────────────────────── */
+  .placeholder {
+    text-align: center;
+    padding: 80px 40px;
+    color: var(--muted);
+  }
+  .placeholder .icon { font-size: 3rem; margin-bottom: 12px; }
+  .placeholder p { font-size: 0.9rem; }
+
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Toast ────────────────────────────────────────────────────────────── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    max-width: 320px;
+    z-index: 999;
+    display: none;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  #toast.show { display: block; animation: fadeIn 0.2s; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: none; } }
+
+  /* ── Modal (frame preview) ────────────────────────────────────────────── */
+  .modal-bg {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    display: none;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    max-width: 680px;
+    width: 90%;
+  }
+  .modal img { width: 100%; display: block; }
+  .modal .modal-info { padding: 16px 20px; }
+  .modal .modal-info h3 { color: var(--accent2); font-size: 1.1rem; }
+  .modal .modal-info p  { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
+  .modal-close { float: right; cursor: pointer; color: var(--muted); font-size: 1.2rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Vari<span>phi</span> VideoSearch</div>
+  <div class="tagline">Natural language search over video archives</div>
+  <a class="docs-link" href="/docs" target="_blank">📖 API Docs</a>
+</header>
+
+<div class="layout">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <!-- Index section -->
+    <div>
+      <div class="section-title">📁 Index Video</div>
+      <label>Video path (file or folder)</label>
+      <input type="text" id="videoPath" placeholder="/path/to/video.mp4" style="margin-bottom:10px">
+      <div class="row" style="margin-bottom:10px">
+        <div>
+          <label>Sample FPS</label>
+          <input type="number" id="sampleFps" value="1.0" step="0.5" min="0.1" max="30">
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:flex-end">
+          <div class="check-row">
+            <input type="checkbox" id="sceneDetect" checked>
+            <span>Scene detect</span>
+          </div>
+        </div>
+      </div>
+      <div class="check-row" style="margin-bottom:10px">
+        <input type="checkbox" id="forceReindex">
+        <span>Force re-index</span>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="startIndexing()">⚡ Start Indexing</button>
+    </div>
+
+    <!-- Index status -->
+    <div id="indexStatusSection" style="display:none">
+      <div class="section-title">📊 Index Status</div>
+      <div class="status-card" id="statusCard">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="statusBadge" class="badge badge-pending">pending</span>
+          <span id="statusJobId" style="font-size:0.75rem;color:var(--muted)"></span>
+        </div>
+        <div class="progress-wrap" style="margin-top:10px">
+          <div class="progress-bar" id="progressBar" style="width:0%"></div>
+        </div>
+        <div class="stat"><span>Frames indexed</span><span class="stat-val" id="statFrames">0</span></div>
+        <div class="stat"><span>Throughput</span><span class="stat-val" id="statThroughput">—</span></div>
+        <div class="stat"><span>Elapsed</span><span class="stat-val" id="statElapsed">—</span></div>
+        <div id="statusMsg" style="margin-top:8px;color:var(--muted);font-size:0.78rem"></div>
+      </div>
+    </div>
+
+    <!-- Search section -->
+    <div>
+      <div class="section-title">🔍 Search Query</div>
+      <label>Natural language query</label>
+      <textarea id="queryText" placeholder='e.g. "person near entrance carrying a bag"&#10;"red vehicle in zone 3"&#10;"anything unusual in the corridor"'></textarea>
+
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Time start (HH:MM:SS)</label>
+          <input type="text" id="timeStart" placeholder="00:00:00">
+        </div>
+        <div>
+          <label>Time end (HH:MM:SS)</label>
+          <input type="text" id="timeEnd" placeholder="23:59:59">
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Top-K results</label>
+          <input type="number" id="topK" value="10" min="1" max="100">
+        </div>
+        <div>
+          <label>Video filter</label>
+          <input type="text" id="videoFilter" placeholder="optional">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:16px;margin:10px 0">
+        <div class="check-row">
+          <input type="checkbox" id="rerank" checked>
+          <span>Re-rank</span>
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="decompose" checked>
+          <span>Decompose query</span>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" onclick="runSearch()" id="searchBtn">🔎 Search</button>
+    </div>
+
+    <!-- Download results -->
+    <div>
+      <div class="section-title">💾 Export</div>
+      <button class="btn btn-secondary btn-full btn-sm" onclick="downloadLatest('json')">⬇ Download JSON</button>
+      <button class="btn btn-secondary btn-full btn-sm" style="margin-top:8px" onclick="downloadLatest('csv')">⬇ Download CSV</button>
+      <button class="btn btn-secondary btn-full btn-sm" style="margin-top:8px" onclick="openHtmlResults()">🌐 HTML Results Page</button>
+    </div>
+
+  </aside>
+
+  <!-- ── Main content ────────────────────────────────────────────────────── -->
+  <main class="main" id="main">
+    <div class="placeholder" id="placeholder">
+      <div class="icon">🎬</div>
+      <p>Index a video then run a natural language query<br>to see ranked results with timestamps and previews.</p>
+    </div>
+  </main>
+
+</div>
+
+<!-- ── Modal ─────────────────────────────────────────────────────────────── -->
+<div class="modal-bg" id="modalBg" onclick="closeModal(event)">
+  <div class="modal">
+    <img id="modalImg" src="" alt="frame preview">
+    <div class="modal-info">
+      <span class="modal-close" onclick="closeModal()">✕</span>
+      <h3 id="modalTs">—</h3>
+      <p id="modalMeta">—</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+  const API = '';  // same origin
+  let currentJobId = null;
+  let pollTimer = null;
+  let lastQuery = '';
+
+  /* ── Toast ───────────────────────────────────────────────────────────── */
+  function toast(msg, color = 'var(--text)') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.style.color = color;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 3500);
+  }
+
+  /* ── Indexing ─────────────────────────────────────────────────────────── */
+  async function startIndexing() {
+    const path = document.getElementById('videoPath').value.trim();
+    if (!path) { toast('Enter a video path first.', 'var(--warn)'); return; }
+
+    const body = {
+      video_path: path,
+      sample_fps: parseFloat(document.getElementById('sampleFps').value),
+      use_scene_detection: document.getElementById('sceneDetect').checked,
+      force_reindex: document.getElementById('forceReindex').checked,
+    };
+
+    try {
+      const res = await fetch(`${API}/api/v1/index/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Unknown error');
+      currentJobId = data.job_id;
+      document.getElementById('indexStatusSection').style.display = 'block';
+      document.getElementById('statusJobId').textContent = `Job: ${currentJobId}`;
+      toast(`Indexing started (job ${currentJobId})`, 'var(--success)');
+      pollStatus();
+    } catch (e) {
+      toast(`Error: ${e.message}`, 'var(--error)');
+    }
+  }
+
+  function pollStatus() {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+      if (!currentJobId) return;
+      try {
+        const res = await fetch(`${API}/api/v1/index/status/${currentJobId}`);
+        const d = await res.json();
+        updateStatusUI(d);
+        if (d.status === 'done' || d.status === 'error') clearInterval(pollTimer);
+      } catch (_) {}
+    }, 1500);
+  }
+
+  function updateStatusUI(d) {
+    const badge = document.getElementById('statusBadge');
+    badge.textContent = d.status;
+    badge.className = `badge badge-${d.status}`;
+    document.getElementById('statFrames').textContent = d.frames_indexed.toLocaleString();
+    document.getElementById('statThroughput').textContent = d.throughput_fps > 0 ? `${d.throughput_fps} fps` : '—';
+    document.getElementById('statElapsed').textContent = d.elapsed_sec > 0 ? `${d.elapsed_sec}s` : '—';
+    document.getElementById('statusMsg').textContent = d.message;
+    const pct = d.total_frames_estimated > 0
+      ? Math.min(100, (d.frames_indexed / d.total_frames_estimated) * 100)
+      : (d.status === 'done' ? 100 : 0);
+    document.getElementById('progressBar').style.width = `${pct}%`;
+    if (d.status === 'done') toast('✅ Indexing complete!', 'var(--success)');
+    if (d.status === 'error') toast(`❌ ${d.message}`, 'var(--error)');
+  }
+
+  /* ── Search ───────────────────────────────────────────────────────────── */
+  async function runSearch() {
+    const query = document.getElementById('queryText').value.trim();
+    if (!query) { toast('Enter a query first.', 'var(--warn)'); return; }
+
+    lastQuery = query;
+    document.getElementById('searchBtn').disabled = true;
+    showLoading();
+
+    const body = {
+      query,
+      top_k: parseInt(document.getElementById('topK').value) || 10,
+      time_start: document.getElementById('timeStart').value || null,
+      time_end: document.getElementById('timeEnd').value || null,
+      video_filter: document.getElementById('videoFilter').value || null,
+      rerank: document.getElementById('rerank').checked,
+      decompose_query: document.getElementById('decompose').checked,
+    };
+
+    try {
+      const res = await fetch(`${API}/api/v1/query/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Query failed');
+      renderResults(data);
+    } catch (e) {
+      renderError(e.message);
+      toast(`Error: ${e.message}`, 'var(--error)');
+    } finally {
+      document.getElementById('searchBtn').disabled = false;
+    }
+  }
+
+  function showLoading() {
+    document.getElementById('main').innerHTML = `
+      <div class="placeholder">
+        <div class="spinner"></div>
+        <p>Searching…</p>
+      </div>`;
+  }
+
+  function renderError(msg) {
+    document.getElementById('main').innerHTML = `
+      <div class="placeholder">
+        <div class="icon">⚠️</div>
+        <p>${msg}</p>
+      </div>`;
+  }
+
+  function renderResults(data) {
+    if (!data.results || data.results.length === 0) {
+      document.getElementById('main').innerHTML = `
+        <div class="placeholder">
+          <div class="icon">🔍</div>
+          <p>No results found for &ldquo;${data.query}&rdquo;.<br>
+          Try a different query or check that the video is indexed.</p>
+        </div>`;
+      return;
+    }
+
+    const subQHtml = data.sub_queries && data.sub_queries.length > 1
+      ? `<div class="sub-queries">${data.sub_queries.map(q =>
+          `<span class="sub-q-chip">↳ ${q}</span>`).join('')}</div>`
+      : '';
+
+    const cards = data.results.map(r => {
+      const scorePct = Math.round(Math.min(1, Math.max(0, r.score)) * 100);
+      const sq = r.sub_query ? `<div class="card-sq">↳ ${r.sub_query}</div>` : '';
+      return `
+        <div class="card" onclick="openModal('${r.thumbnail_url}','${r.timestamp_hms}','${r.video}',${r.score})">
+          <img class="card-img" src="${r.thumbnail_url}" alt="frame ${r.timestamp_hms}" loading="lazy"
+               onerror="this.style.background='#1a1a2e';this.alt='No preview'">
+          <div class="card-body">
+            <span class="card-rank">#${r.rank}</span>
+            <div class="card-ts">⏱ ${r.timestamp_hms}</div>
+            <div class="card-score">Score: ${r.score.toFixed(4)}</div>
+            <div class="score-bar-wrap"><div class="score-bar" style="width:${scorePct}%"></div></div>
+            <div class="card-vid">📹 ${r.video}</div>
+            ${sq}
+          </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('main').innerHTML = `
+      <div class="results-header">
+        <h2>Results for &ldquo;${data.query}&rdquo;</h2>
+        <span class="results-meta">${data.results.length} hits · ${data.latency_ms} ms · ${data.total_frames_searched.toLocaleString()} frames searched${data.reranked ? ' · re-ranked' : ''}</span>
+      </div>
+      ${subQHtml}
+      <div class="grid">${cards}</div>`;
+  }
+
+  /* ── Modal ────────────────────────────────────────────────────────────── */
+  function openModal(imgUrl, ts, video, score) {
+    document.getElementById('modalImg').src = imgUrl;
+    document.getElementById('modalTs').textContent = `⏱ ${ts}`;
+    document.getElementById('modalMeta').textContent = `📹 ${video}  |  Score: ${score.toFixed(4)}`;
+    document.getElementById('modalBg').classList.add('open');
+  }
+  function closeModal(e) {
+    if (!e || e.target === document.getElementById('modalBg'))
+      document.getElementById('modalBg').classList.remove('open');
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+  /* ── Export ───────────────────────────────────────────────────────────── */
+  async function downloadLatest(format) {
+    try {
+      const listRes = await fetch(`${API}/api/v1/results/list`);
+      const list = await listRes.json();
+      if (!list.files || list.files.length === 0) { toast('No results yet.', 'var(--warn)'); return; }
+      const file = format === 'csv'
+        ? list.files.find(f => f.endsWith('.csv')) || list.files[0].replace('.json','.csv')
+        : list.files[0];
+      window.open(`${API}/api/v1/results/${file}`, '_blank');
+    } catch (e) { toast('Could not fetch results list.', 'var(--error)'); }
+  }
+
+  function openHtmlResults() {
+    if (!lastQuery) { toast('Run a search first.', 'var(--warn)'); return; }
+    const q = encodeURIComponent(lastQuery);
+    const k = document.getElementById('topK').value;
+    const ts = document.getElementById('timeStart').value;
+    const te = document.getElementById('timeEnd').value;
+    let url = `${API}/api/v1/query/html?q=${q}&top_k=${k}`;
+    if (ts) url += `&time_start=${encodeURIComponent(ts)}`;
+    if (te) url += `&time_end=${encodeURIComponent(te)}`;
+    window.open(url, '_blank');
+  }
+
+  /* ── Enter key shortcut ───────────────────────────────────────────────── */
+  document.getElementById('queryText').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runSearch();
+  });
+</script>
+</body>
+</html>

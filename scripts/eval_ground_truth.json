@@ -1,0 +1,27 @@
+[
+  {
+    "query": "person near the entrance carrying a bag",
+    "relevant_timestamps": [
+      {"video": "lobby.mp4", "timestamp_sec": 142.0, "tolerance_sec": 5.0},
+      {"video": "lobby.mp4", "timestamp_sec": 310.0, "tolerance_sec": 5.0}
+    ]
+  },
+  {
+    "query": "two people talking near the server rack",
+    "relevant_timestamps": [
+      {"video": "datacenter.mp4", "timestamp_sec": 850.0, "tolerance_sec": 8.0}
+    ]
+  },
+  {
+    "query": "red vehicle parked",
+    "relevant_timestamps": [
+      {"video": "parking.mp4", "timestamp_sec": 60.0, "tolerance_sec": 10.0}
+    ]
+  },
+  {
+    "query": "anything unusual in the corridor",
+    "relevant_timestamps": [
+      {"video": "corridor.mp4", "timestamp_sec": 450.0, "tolerance_sec": 15.0}
+    ]
+  }
+]

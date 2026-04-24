@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Index store (large binary files)
+index_store/
+
+# Generated thumbnails
+static/thumbnails/
+static/results/
+
+# Logs
+*.log
+
+# Model cache
+~/.cache/huggingface/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

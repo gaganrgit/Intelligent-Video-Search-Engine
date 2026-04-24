@@ -1,0 +1,62 @@
+{
+  "query": "person near the entrance carrying a bag",
+  "timestamp": 1714000000,
+  "count": 5,
+  "results": [
+    {
+      "rank": 1,
+      "video": "lobby.mp4",
+      "timestamp_sec": 142.0,
+      "timestamp_hms": "00:02:22",
+      "score": 0.3241,
+      "thumbnail_url": "/thumbnails/lobby/0003550.jpg",
+      "frame_path": "static/thumbnails/lobby/0003550.jpg",
+      "query": "person near the entrance carrying a bag",
+      "sub_query": "person carrying a bag"
+    },
+    {
+      "rank": 2,
+      "video": "lobby.mp4",
+      "timestamp_sec": 310.5,
+      "timestamp_hms": "00:05:10",
+      "score": 0.2987,
+      "thumbnail_url": "/thumbnails/lobby/0007762.jpg",
+      "frame_path": "static/thumbnails/lobby/0007762.jpg",
+      "query": "person near the entrance carrying a bag",
+      "sub_query": "entrance area"
+    },
+    {
+      "rank": 3,
+      "video": "lobby.mp4",
+      "timestamp_sec": 88.0,
+      "timestamp_hms": "00:01:28",
+      "score": 0.2744,
+      "thumbnail_url": "/thumbnails/lobby/0002200.jpg",
+      "frame_path": "static/thumbnails/lobby/0002200.jpg",
+      "query": "person near the entrance carrying a bag",
+      "sub_query": null
+    },
+    {
+      "rank": 4,
+      "video": "lobby.mp4",
+      "timestamp_sec": 205.0,
+      "timestamp_hms": "00:03:25",
+      "score": 0.2511,
+      "thumbnail_url": "/thumbnails/lobby/0005125.jpg",
+      "frame_path": "static/thumbnails/lobby/0005125.jpg",
+      "query": "person near the entrance carrying a bag",
+      "sub_query": null
+    },
+    {
+      "rank": 5,
+      "video": "lobby.mp4",
+      "timestamp_sec": 430.0,
+      "timestamp_hms": "00:07:10",
+      "score": 0.2388,
+      "thumbnail_url": "/thumbnails/lobby/0010750.jpg",
+      "frame_path": "static/thumbnails/lobby/0010750.jpg",
+      "query": "person near the entrance carrying a bag",
+      "sub_query": null
+    }
+  ]
+}
