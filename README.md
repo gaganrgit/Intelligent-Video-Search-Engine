@@ -1,32 +1,49 @@
-# 🎬 Intelligent Video Search Engine
+# Intelligent Video Search Engine
+
+Natural language querying over video archives — type a plain-English description, get back ranked timestamps and frame previews.
+
+| | |
+|---|---|
+| **Language** | Python 3.10+ |
+| **Framework** | FastAPI + Uvicorn |
+| **Embedding Model** | OpenAI CLIP ViT-B/32 |
+| **Vector Store** | FAISS IVFFlat |
+
+---
 
 ## Table of Contents
 
 1. [Setup & Installation](#setup--installation)
-2. [Architecture Overview](#architecture-overview)
-3. [API Reference](#api-reference)
-4. [CLI Usage](#cli-usage)
-5. [Design Decisions](#design-decisions)
-6. [Benchmark Results](#benchmark-results)
-7. [Open-Ended Exploration](#open-ended-exploration)
-8. [Known Limitations](#known-limitations)
+2. [Overview](#overview)
+3. [Indexing Pipeline](#indexing-pipeline-offline)
+4. [Query Pipeline](#query-pipeline-online--400-ms)
+5. [API Reference](#api-reference)
+6. [CLI Usage](#cli-usage)
+7. [Web UI](#web-ui)
+8. [Project Structure](#project-structure)
+9. [Design Decisions](#design-decisions)
+10. [Benchmark](#benchmark)
+11. [Scalability](#scalability)
+12. [Known Limitations](#known-limitations)
+13. [Evaluation](#evaluation)
 
 ---
+
 ## Setup & Installation
 
 ### Prerequisites
 
 - Python 3.10+
 - `pip`
-- ffmpeg (optional, for codec support)
+- `ffmpeg` (optional, for broader codec support)
 - GPU optional — CPU fallback is automatic
 
 ### Steps
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<your-username>/variphi-video-search.git
-cd variphi-video-search
+git clone https://github.com/<your-username>/video-search.git
+cd video-search
 
 # 2. Create and activate a virtual environment
 python -m venv .venv
@@ -40,13 +57,26 @@ cp .env.example .env
 
 # 5. Start the FastAPI server
 python run_server.py
-# → Open http://localhost:8000 for the Web UI
-# → Open http://localhost:8000/docs for Swagger API docs
+# → http://localhost:8000        Web UI
+# → http://localhost:8000/docs   Swagger API docs
 ```
+
+> **Note:** The CLIP ViT-B/32 model (~605 MB) is downloaded from HuggingFace on first run. Subsequent starts use the local cache (~7.5 s load time).
 
 ---
 
-## Architecture Overview
+## Overview
+
+The system is split into two phases:
+
+1. **Indexing** — a one-time offline step that processes video and stores it in a searchable format.
+2. **Querying** — a fast online step that matches text queries against the stored index in under a second.
+
+**Key insight:** CLIP understands both images and text in the same mathematical space, so a text sentence can be directly compared to a video frame — no manual tagging required.
+
+---
+
+## Architecture Diagrams
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -55,14 +85,14 @@ python run_server.py
 │  Video File(s)                                                      │
 │      │                                                              │
 │      ▼                                                              │
-│  FrameSampler ──────────────────────────────────────────────────    │
+│  FrameSampler                                                       │
 │  (Hybrid: uniform @ N fps + scene-change detection)                 │
 │      │  SampledFrame (PIL Image + timestamp)                        │
 │      ▼                                                              │
-│  CLIPEmbedder (ViT-B/32, FP16, batched)                            │
+│  CLIPEmbedder (ViT-B/32, FP16, batched)                             │
 │      │  float32 embeddings (512-dim, L2-normalised)                 │
 │      ▼                                                              │
-│  Thumbnail Saver → static/thumbnails/<video>/<frame>.jpg           │
+│  Thumbnail Saver → static/thumbnails/<video>/<frame>.jpg            │
 │      │                                                              │
 │      ▼                                                              │
 │  VideoVectorStore                                                   │
@@ -79,7 +109,7 @@ python run_server.py
 │  Natural Language Query                                             │
 │      │                                                              │
 │      ▼                                                              │
-│  QueryDecomposer (heuristic: spatial / "and" splits)               │
+│  QueryDecomposer (heuristic: spatial / "and" splits)                │
 │      │  sub_queries[]                                               │
 │      ▼                                                              │
 │  CLIPEmbedder.embed_texts()                                         │
@@ -101,29 +131,105 @@ python run_server.py
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Component Summary
+---
 
-| Component | File | Role |
+## Indexing Pipeline (Offline)
+
+### Step 1 — Video Input
+
+Accepts a path to a single video file or a folder of clips. Supported extensions: `.mp4`, `.mkv`, `.avi`, `.mov`, and others. Each video is processed one at a time.
+
+### Step 2 — Frame Sampling
+
+A hybrid strategy selects only the most useful frames:
+
+- **Uniform sampling** — one frame per second of video, guaranteeing full temporal coverage.
+- **Scene-change detection** — grayscale frame differencing captures abrupt visual transitions (e.g. a door opening) that fall between uniform samples.
+- **Memory safety** — frames are yielded one at a time and released after processing; the system handles long videos on limited RAM without issue.
+
+### Step 3 — CLIP Embedding
+
+Each sampled frame is passed through CLIP, which converts it into a **512-dimensional float32 vector** (embedding). Images that look similar — and text that describes an image — end up at nearby coordinates in this space.
+
+- **Batched processing** — 32 frames per batch on both CPU and GPU.
+- **L2 normalisation** — all embeddings are normalised to unit length so similarity is measured by direction, not magnitude.
+- **FP16 / CPU fallback** — GPU runs in half-precision; CPU falls back to full-precision automatically.
+
+### Step 4 — Thumbnail Saving
+
+Each sampled frame is saved as a 320×180 JPEG to `static/thumbnails/<video>/<frame>.jpg`, served as static files by FastAPI.
+
+### Step 5 — FAISS Index
+
+All frame embeddings are stored in a FAISS index:
+
+| Corpus size | Index type | Behaviour |
 |---|---|---|
-| `CLIPEmbedder` | `models/clip_embedder.py` | CLIP ViT-B/32 inference, FP16, batched |
-| `FrameSampler` | `indexer/frame_sampler.py` | Hybrid uniform + scene-change sampling |
-| `VideoVectorStore` | `indexer/vector_store.py` | FAISS IVFFlat, persist/load, ANN search |
-| `IndexingPipeline` | `indexer/pipeline.py` | Orchestrates indexing, runs as background task |
-| `QueryEngine` | `indexer/query_engine.py` | Decomposition → ANN → re-rank |
-| FastAPI app | `app/main.py` + `app/routers/` | REST API + static file serving |
-| Web UI | `static/index.html` | Single-page interactive UI |
-| CLI | `cli.py` | Command-line indexing/search/benchmark |
-| Evaluator | `scripts/evaluate.py` | Precision@K, MRR |
+| < 400 frames | `FlatIP` | Exact search against every frame |
+| ≥ 400 frames | `IVFFlat` | Clusters vectors; searches only the most relevant clusters |
+
+### Step 6 — Persisted Files
+
+Three files are written to `index_store/` per video:
+
+| File | Contents |
+|---|---|
+| `<name>.index` | FAISS binary index |
+| `<name>.meta.json` | Per-vector metadata: video name, timestamp (seconds + HH:MM:SS), thumbnail path |
+| `<name>.npy` | Raw float32 embeddings for re-ranking |
+
+After all videos are indexed, a single `combined.index` is merged for cross-video search.
+
+---
+
+## Query Pipeline (Online, < 400 ms)
+
+### Stage 1 — Query Decomposition
+
+Complex queries are split into simpler atomic sub-queries before searching:
+
+- Spatial prepositions (`near`, `beside`, `at`, etc.) trigger a split.
+- Compound objects are split on `and`.
+- Temporal phrases (`after 6 PM`, `before 8 AM`) are stripped and converted to time-filter parameters.
+
+**Example:**
+```
+Input:  "person near the entrance carrying a bag after 6 PM"
+Output: sub-query 1 → "person carrying a bag"
+        sub-query 2 → "entrance area"
+        time_start  → 18:00:00
+```
+
+Results from all sub-queries are merged and de-duplicated; a frame matching multiple sub-queries scores higher.
+
+### Stage 2 — Text Embedding + ANN Search
+
+Each sub-query is embedded by CLIP into a 512-d vector (same space as frame embeddings). The `combined.index` is loaded from disk into RAM on the **first query only**; all subsequent queries reuse the in-memory index with no disk reads. FAISS returns the top-50 most similar frames using inner product (equivalent to cosine similarity after L2 normalisation).
+
+Temporal and video-name filters are applied post-retrieval; the system over-fetches up to 10× the requested count to ensure enough candidates survive filtering.
+
+### Stage 3 — Re-Ranking
+
+The top-50 FAISS candidates are re-scored using **exact dot-product** against the raw `.npy` embeddings, then re-sorted. This corrects ordering errors introduced by approximate search cheaply — exact comparison against 50 vectors instead of thousands.
+
+### Stage 4 — Result Assembly
+
+Each result includes:
+
+- Rank, timestamp (seconds + HH:MM:SS), similarity score (0–1)
+- Thumbnail URL, video filename, originating sub-query
+
+Results are saved synchronously to a timestamped JSON and CSV in `static/results/`, and a rolling `results.csv` is maintained.
 
 ---
 
 ## API Reference
 
+All request bodies are validated against Pydantic schemas before any ML code is touched. Invalid payloads (empty query, `top_k` outside 1–100, malformed time strings) return a `422` immediately. Indexing runs as a background thread; poll `/index/status/{job_id}` to track progress.
+
 ### Indexing
 
 #### `POST /api/v1/index/start`
-Start background indexing of a video file or directory.
-
 ```json
 {
   "video_path": "/data/videos/lobby.mp4",
@@ -132,21 +238,19 @@ Start background indexing of a video file or directory.
   "force_reindex": false
 }
 ```
-
-Returns `{ "job_id": "a3f12b" }` — poll with:
+Returns `{ "job_id": "a3f12b" }`.
 
 #### `GET /api/v1/index/status/{job_id}`
-Returns progress, throughput, and status (`running` | `done` | `error`).
+Returns frames done, throughput, and status (`running` | `done` | `error`).
 
 #### `GET /api/v1/index/jobs`
-List all indexing jobs.
+List all indexing jobs started in this server session.
 
 ---
 
 ### Query
 
 #### `POST /api/v1/query/search`
-
 ```json
 {
   "query": "person near the entrance carrying a bag",
@@ -172,8 +276,6 @@ List all indexing jobs.
       "timestamp_hms": "00:02:22",
       "score": 0.3241,
       "thumbnail_url": "/thumbnails/lobby/0003550.jpg",
-      "frame_path": "...",
-      "query": "...",
       "sub_query": "person carrying a bag"
     }
   ],
@@ -188,23 +290,25 @@ Returns a rendered HTML results page directly viewable in a browser.
 
 ---
 
-### Results
+### Results & Health
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/v1/results/list` | List saved result files |
-| `GET /api/v1/results/latest` | Fetch most recent query results JSON |
-| `GET /api/v1/results/{filename}` | Download a specific results file |
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/results/list` | List saved result files |
+| `GET` | `/api/v1/results/latest` | Fetch most recent results JSON |
+| `GET` | `/api/v1/results/{filename}` | Download a specific results file |
+| `GET` | `/health` | Server health check |
+| `GET` | `/` | Single-page web UI |
 
 ---
 
 ## CLI Usage
 
 ```bash
-# Index a video
+# Index a single video
 python cli.py index --video /path/to/video.mp4 --fps 1.0
 
-# Index a folder
+# Index a folder of clips
 python cli.py index --video /path/to/clips/
 
 # Search
@@ -213,113 +317,185 @@ python cli.py search --query "person near the entrance carrying a bag"
 # Search with temporal filter
 python cli.py search --query "red vehicle" --start 18:00:00 --end 20:00:00
 
-# Search + HTML output
+# Search and export to HTML
 python cli.py search --query "unusual activity in corridor" --html
 
-# Run benchmarks
+# Run benchmark
 python cli.py benchmark --video /path/to/video.mp4
 
-# Evaluate with ground truth
+# Evaluate against ground truth
 python scripts/evaluate.py --ground-truth scripts/eval_ground_truth.json --top-k 10
 ```
 
 ---
 
-## Design Decisions
+## Web UI
 
-### Why CLIP (ViT-B/32)?
+Served at `http://localhost:8000`. Single self-contained HTML file — no React, no Node.js, no build step.
 
-CLIP produces a **joint image-text embedding space** — the same model encodes both frames and queries. This means no separate captioning or object-detection pipeline is needed. ViT-B/32 was chosen as the default because it runs well on CPU (< 2 GB RAM) while still offering strong zero-shot retrieval. For better accuracy, the config supports swapping to `openai/clip-vit-large-patch14` or `laion/CLIP-ViT-H-14-laion2B-s32B-b79K`.
-
-### Why FAISS IVFFlat?
-
-| Option | Pros | Cons | Verdict |
-|---|---|---|---|
-| FAISS Flat | Exact, simple | O(N) scan — slow at scale | Only for < 10K frames |
-| **FAISS IVFFlat** | Sub-linear ANN, no server needed, CPU-fast | Requires training step | ✅ Chosen default |
-| Qdrant/Weaviate | Rich filtering, cloud-native | Requires a running server | Overkill for single-machine |
-| Chroma | Simple API | Less battle-tested at scale | Second choice |
-
-IVFFlat uses inverted file indexing: vectors are clustered into `nlist` cells; at query time only `nprobe` cells are scanned. This gives ~10–100× speedup over exact search with < 1% recall loss.
-
-### Frame Sampling Strategy
-
-**Hybrid uniform + scene-change**:
-- Uniform at 1 fps provides guaranteed temporal coverage.
-- Scene-change detection (mean pixel-diff on grayscale) adds extra frames at semantic boundaries.
-- Result: denser sampling at transitions (door opens, person enters) without wasting budget on static footage.
-- Memory safety: frames are **streamed and yielded one at a time** — never held in RAM simultaneously.
-
-### Temporal Context
-
-Single frames are inherently ambiguous. The system handles this at two levels:
-1. **Query decomposition**: "two people talking after 6 PM" → `["two people talking"]` + temporal filter `time_start=18:00:00`.
-2. **Temporal clustering** (optional): consecutive hits within `TEMPORAL_WINDOW_SEC` can be grouped to surface clip-level events rather than isolated frames.
-
-### Re-ranking
-
-First-stage ANN retrieval (`rerank_top_k=50`) uses FAISS approximate scores. Re-ranking recomputes exact CLIP dot products against the stored `.npy` embeddings for those 50 candidates, then re-sorts. This two-stage approach keeps ANN fast while improving final ranking accuracy for the top-10 displayed results.
-
-### Query Decomposition
-
-Complex queries ("person near entrance carrying a bag after 6 PM") are split into:
-- Spatial sub-queries: `"person carrying a bag"` + `"entrance area"`
-- Temporal clause extracted as a filter parameter
-
-Sub-queries are each embedded and searched independently; results are merged and de-duplicated before re-ranking. The decomposer is heuristic-based (regex on spatial prepositions and "and"); it can be replaced by an LLM call for production.
+- **Index panel** — enter video path, set FPS and scene-detection options, start indexing.
+- **Live progress** — polls status every 1.5 s; shows progress bar, frame count, throughput, elapsed time.
+- **Search panel** — query box, time-range filters, top-K selector, video filter, re-ranking and decomposition toggles.
+- **Results grid** — thumbnail cards with timestamp, score bar, video name, and sub-query label.
+- **Frame modal** — click any card for a full-size preview.
+- **Export** — one-click JSON/CSV download and standalone HTML results page.
 
 ---
 
-## Benchmark Results
+## Project Structure
 
-> Tested on: **MacBook Pro M2 (CPU only, 16 GB RAM)**
+```
+app/
+  main.py               FastAPI app setup, CORS, static file serving, lifespan
+  config.py             All configuration (model, paths, batch size, FPS, etc.)
+  schemas.py            Pydantic models for all request/response shapes
+  routers/
+    index_router.py     Indexing job endpoints
+    query_router.py     Search endpoints (JSON + HTML)
+    results_router.py   Result listing and download endpoints
+
+models/
+  clip_embedder.py      CLIP loader, batched image embedding, text embedding
+
+indexer/
+  frame_sampler.py      Hybrid uniform + scene-change frame extraction
+  vector_store.py       FAISS build, save, load, merge, ANN search
+  pipeline.py           Full indexing orchestration and background job management
+  query_engine.py       Decomposition, ANN search, re-ranking, result assembly
+
+utils/
+  thumbnail.py          Frame resizing and JPEG saving
+  results_writer.py     JSON and CSV result persistence
+  html_renderer.py      Standalone HTML results page generation
+  time_utils.py         Seconds ↔ HH:MM:SS conversion
+  profiler.py           Wall-clock timing, throughput, peak RAM measurement
+
+static/
+  index.html            Single-page web UI
+
+cli.py                  CLI for indexing, searching, and benchmarking
+run_server.py           Uvicorn server entry point
+scripts/evaluate.py     Precision@K and MRR evaluation against ground truth
+```
+
+---
+
+## Benchmark (CPU, No GPU)
 
 ### Indexing
 
-| Video | Duration | Frames Sampled | Throughput | Elapsed | Peak RAM |
-|---|---|---|---|---|---|
-| Sample 5-min clip | 5 min | ~360 | ~4.2 fps | 86 s | 1.8 GB |
-| 30-min clip (estimated) | 30 min | ~2100 | ~4.2 fps | ~500 s | 2.1 GB |
-
-### Query Latency (index built)
-
-| Scenario | Latency |
+| Metric | Value |
 |---|---|
-| Simple object query, no rerank | ~8 ms |
-| Object query + rerank (top-50) | ~35 ms |
-| Compound query (2 sub-queries) + rerank | ~65 ms |
+| Frames sampled (8 s clip) | 8 |
+| Indexing throughput | 0.73 fps (including model load) |
+| Total elapsed time | 11.03 s |
+| Model load time (cached) | ~7.5 s |
+| CLIP model size | 605 MB |
+
+### Query Latency
+
+| Query type | Latency |
+|---|---|
+| Simple + re-rank | ~289 ms |
+| Simple, no re-rank | ~50 ms |
+| Compound + re-rank | ~350 ms |
+| With temporal filter | +5 ms overhead |
+
+### Memory (Windows CPU)
+
+| Component | RAM |
+|---|---|
+| CLIP ViT-B/32 (CPU FP32) | ~650 MB |
+| FastAPI + Uvicorn | ~50 MB |
+| FAISS index (8 frames) | < 1 MB |
+
+### Extended Benchmark (Apple M2, CPU only, 16 GB RAM)
+
+| Video | Duration | Frames Sampled | Throughput | Elapsed |
+|---|---|---|---|---|
+| Sample clip | 5 min | ~360 | ~4.2 fps | 86 s |
+| Long clip (est.) | 30 min | ~2,100 | ~4.2 fps | ~500 s |
+
+| Query type | Latency |
+|---|---|
+| Simple, no re-rank | ~8 ms |
+| Simple + re-rank (top-50) | ~35 ms |
+| Compound + re-rank | ~65 ms |
 | With temporal filter | +2 ms overhead |
-
-All queries are **sub-100 ms** on CPU once the index is built. On GPU the embedding step is 4–8× faster, reducing indexing time proportionally.
-
-### Memory Footprint
 
 | Component | RAM |
 |---|---|
 | CLIP ViT-B/32 (FP32) | ~600 MB |
 | CLIP ViT-B/32 (FP16, GPU) | ~300 MB |
-| FAISS index (1800 frames) | ~4 MB |
-| Raw embeddings .npy (1800 × 512) | ~3.5 MB |
-| Thumbnails (disk) | ~15 MB |
+| FAISS index (1,800 frames) | ~4 MB |
+| Raw embeddings (1,800 × 512) | ~3.5 MB |
+| Thumbnails on disk | ~15 MB |
 
 ---
 
-## Open-Ended Exploration
+## Design Decisions
 
-### 1. Query Decomposition
-Implemented in `indexer/query_engine.py`. Heuristic splitting on spatial prepositions (`near`, `beside`, `in front of`) and conjunctions (`and`). Each sub-query is retrieved separately and results merged. Extension path: call an LLM to produce sub-queries in structured JSON.
+### CLIP ViT-B/32
+Produces a joint image-text embedding space — the same model encodes both frames and queries, eliminating the need for a separate captioning or object-detection pipeline. ViT-B/32 runs well on CPU (< 2 GB RAM) with strong zero-shot accuracy. The config supports swapping to `openai/clip-vit-large-patch14` for better accuracy at higher resource cost.
 
-### 2. Re-ranking
-Two-stage retrieval: ANN (FAISS) → exact dot-product re-rank on top-50 candidates. Consistently improves precision for compound queries. See `QueryEngine._rerank()`.
+### FAISS Index Selection
 
-### 3. Evaluation Protocol
-`scripts/evaluate.py` implements **Precision@K** and **MRR** against a ground-truth JSON file. Sample ground truth provided in `scripts/eval_ground_truth.json`.
+| Option | Pros | Cons | Verdict |
+|---|---|---|---|
+| `FlatIP` | Exact, simple | O(N) scan — slow at scale | Auto-selected for < 400 frames |
+| **`IVFFlat`** | Sub-linear ANN, no server, CPU-fast | Requires a training step | Default for larger corpora |
+| Qdrant / Weaviate | Rich filtering, cloud-native | Requires a running server | Recommended at 1,000 h+ scale |
 
-### 4. Web UI
-Full single-page UI (`static/index.html`) with:
-- Live indexing progress with throughput and progress bar
-- Natural language search with temporal filters
-- Results grid with thumbnail previews and score bars
-- Frame detail modal
-- One-click HTML / JSON / CSV export
+IVFFlat clusters vectors into `nlist` cells; at query time only `nprobe` cells are scanned — ~10–100× faster than exact search with < 1% recall loss.
 
+### Hybrid Frame Sampling
+Uniform sampling at 1 fps guarantees full temporal coverage. Scene-change detection (mean pixel-diff on grayscale) adds extra samples at semantic boundaries (door opens, person enters) without wasting budget on static footage. Frames are streamed and yielded one at a time — never all held in RAM simultaneously.
+
+### Two-Stage Retrieval
+ANN retrieval via FAISS fetches the top-50 candidates fast but approximately. Re-ranking recomputes exact dot products against the stored `.npy` embeddings for only those 50 candidates, then re-sorts. This gives the accuracy of exact search at the speed of approximate search.
+
+### Temporal Handling
+Temporal context is handled at two levels: query decomposition strips phrases like "after 6 PM" into `time_start` filter parameters, and post-retrieval filtering discards candidates outside the requested window (with 10× over-fetching to ensure enough results survive).
+
+### Other Choices
+
+| Decision | Rationale |
+|---|---|
+| FastAPI + Uvicorn | Async-native, automatic Pydantic validation, auto-generated docs |
+| Background indexing | Keeps API responsive during multi-minute indexing jobs |
+| Single-file HTML UI | Zero build step; no Node.js; works immediately on any machine |
+
+---
+
+## Scalability
+
+At **1,000 hours of footage** (≈ 3.6 M frames, 7.4 GB of raw embeddings), the current in-process design hits RAM limits. Recommended migration path:
+
+| Layer | Current | At Scale |
+|---|---|---|
+| Vector storage | FAISS in-process | Qdrant or pgvector as a dedicated service |
+| Raw embeddings | `.npy` files in RAM | Stored in vector DB, fetched on demand |
+| Thumbnails | Local disk | Object storage (S3 / GCS) |
+| Indexing | Single background thread | Distributed workers (Celery + Redis) |
+| Model serving | Loaded once in FastAPI | Triton Inference Server with GPU pooling |
+| Search | Single FastAPI node | Load-balanced replicas with sharded indices |
+
+---
+
+## Known Limitations
+
+- **No temporal reasoning** — CLIP embeds single frames; it cannot model motion or changes over time. Video-level models (CLIP4Clip, InternVideo) would address this.
+- **Heuristic decomposer** — regex-based splitting fails on complex relational queries; an LLM-based decomposer would handle arbitrary language.
+- **Re-ranking RAM ceiling** — loading all `.npy` files into memory is infeasible beyond a few hundred hours; a vector DB with built-in exact re-ranking is needed at scale.
+- **No audio** — purely visual; queries about sounds, speech, or alarms are not supported.
+- **Global scene-change threshold** — a single pixel-difference threshold suits neither bright outdoor nor dark indoor footage equally; per-video adaptive calibration would improve frame selection.
+- **First-run model download** — the 605 MB CLIP model is fetched from HuggingFace on first run; air-gapped deployments must pre-cache it.
+
+---
+
+## Evaluation
+
+`scripts/evaluate.py` measures retrieval quality against a ground-truth JSON file:
+
+- **Precision@K** — fraction of top-K results that are genuinely relevant.
+- **MRR (Mean Reciprocal Rank)** — average inverse rank of the first relevant result.
